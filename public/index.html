@@ -338,21 +338,47 @@
     </div>
     
     <script>
+      // Security: Sanitize input to prevent XSS
+      function sanitizeInput(input) {
+        if (!input || typeof input !== 'string') {
+          return '';
+        }
+        // Remove any HTML tags and limit length
+        const div = document.createElement('div');
+        div.textContent = input.substring(0, 255);
+        return div.textContent || '';
+      }
+      
+      // Security: Validate device ID format
+      function validateDeviceId(deviceId) {
+        if (!deviceId || typeof deviceId !== 'string') {
+          return false;
+        }
+        // Only allow alphanumeric, hyphens, underscores, and dots
+        return /^[a-zA-Z0-9._-]+$/.test(deviceId) && deviceId.length <= 255;
+      }
+      
       // Parse URL parameters
       const urlParams = new URLSearchParams(window.location.search);
-      const customer = urlParams.get('CUSTOMER');
-      const device = urlParams.get('DEVICE');
+      const rawCustomer = urlParams.get('CUSTOMER');
+      const rawDevice = urlParams.get('DEVICE');
       
-      // Display customer name if provided
+      // Security: Sanitize customer name
+      const customer = sanitizeInput(rawCustomer);
       if (customer) {
         document.getElementById('customerName').textContent = customer;
       }
       
-      // Populate device ID if provided
+      // Security: Validate and sanitize device ID
       const deviceInput = document.getElementById('deviceId');
-      if (device) {
-        deviceInput.value = device;
-        deviceInput.readOnly = true;
+      if (rawDevice) {
+        const device = sanitizeInput(rawDevice);
+        if (validateDeviceId(device)) {
+          deviceInput.value = device;
+          deviceInput.readOnly = true;
+        } else {
+          console.warn('Invalid device ID format in URL parameter');
+        }
       }
       
 // Handle form submission with progress tracking
@@ -402,19 +428,31 @@
           uploadModal.classList.remove('active');
           
           if (xhr.status === 200) {
-            const response = JSON.parse(xhr.responseText);
-            messageDiv.className = 'message success';
-            messageDiv.textContent = 'File uploaded successfully!';
-            form.reset();
-            
-            // Restore device ID if it was pre-filled
-            if (device) {
-              deviceInput.value = device;
+            try {
+              const response = JSON.parse(xhr.responseText);
+              messageDiv.className = 'message success';
+              messageDiv.textContent = 'File uploaded successfully!';
+              form.reset();
+              
+              // Restore device ID if it was pre-filled
+              if (rawDevice && validateDeviceId(sanitizeInput(rawDevice))) {
+                deviceInput.value = sanitizeInput(rawDevice);
+                deviceInput.readOnly = true;
+              }
+            } catch (e) {
+              messageDiv.className = 'message error';
+              messageDiv.textContent = 'Upload failed: Invalid response from server';
             }
           } else {
-            const error = JSON.parse(xhr.responseText);
-            messageDiv.className = 'message error';
-            messageDiv.textContent = 'Upload failed: ' + (error.error || 'Unknown error');
+            try {
+              const error = JSON.parse(xhr.responseText);
+              messageDiv.className = 'message error';
+              // Security: Use textContent to prevent XSS from error messages
+              messageDiv.textContent = 'Upload failed: ' + (error.error || 'Unknown error');
+            } catch (e) {
+              messageDiv.className = 'message error';
+              messageDiv.textContent = 'Upload failed: Server error';
+            }
           }
           
           uploadBtn.disabled = false;
