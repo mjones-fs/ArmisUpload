@@ -428,10 +428,22 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
   }
 });
 
-// Check if uploads directory exists
+// Security: Check if uploads directory exists and has proper permissions
 if (!fs.existsSync('uploads')) {
   console.error('ERROR: uploads directory does not exist.');
   console.error('Please create the uploads directory by running: mkdir uploads');
+  process.exit(1);
+}
+
+// Security: Verify uploads directory is actually a directory
+try {
+  const stats = fs.statSync('uploads');
+  if (!stats.isDirectory()) {
+    console.error('ERROR: uploads exists but is not a directory.');
+    process.exit(1);
+  }
+} catch (error) {
+  console.error('ERROR: Cannot access uploads directory:', error.message);
   process.exit(1);
 }
 
