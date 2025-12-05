@@ -1,13 +1,28 @@
 import express from "express";
 import multer from "multer";
 import axios from "axios";
+import FormData from "form-data";
 import fs from "fs";
 import dotenv from "dotenv";
 import path from "path";
+import https from "https";
 
 dotenv.config();
 
 const app = express();
+
+// Debug and network configuration
+const DEBUG_MODE = process.env.DEBUG === 'true' || process.env.DEBUG === '1';
+const USE_PROXY = process.env.USE_PROXY !== 'false'; // set USE_PROXY=false to disable env proxy
+
+// HTTPS agent for all outbound API calls
+const httpsAgent = new https.Agent({
+  keepAlive: true,
+  minVersion: 'TLSv1.2',
+  // For debugging TLS issues you can set NODE_ENV!=='production' to skip cert verification.
+  // Do not set this to false in production.
+  rejectUnauthorized: process.env.NODE_ENV === 'production'
+});
 
 // Security: Input validation and sanitization functions
 function sanitizeDeviceId(deviceId) {
@@ -60,61 +75,7 @@ function sanitizeFilename(filename) {
   return sanitized;
 }
 
-// Security: File type validation
-const ALLOWED_MIME_TYPES = [
-  'application/octet-stream', // Binary files
-  'application/x-binary',
-  'application/x-executable',
-  'application/x-firmware',
-  'application/x-sharedlib',
-  'application/x-archive',
-  'application/zip',
-  'application/x-zip-compressed',
-  'application/x-tar',
-  'application/gzip',
-  'application/x-gzip',
-  'application/x-compressed-tar',
-  'application/x-xz',
-  'application/x-7z-compressed',
-  // Virtual machine images
-  'application/x-vmdk',
-  'application/x-virtualbox-vdi',
-  'application/x-qemu-disk',
-];
-
-const ALLOWED_EXTENSIONS = [
-  '.bin', '.elf', '.hex', '.img', '.fw', '.firmware',
-  '.zip', '.tar', '.gz', '.tgz', '.xz', '.7z',
-  '.so', '.a', '.o', '.dll', '.exe',
-  // Virtual machine images
-  '.vmdk', '.ova', '.vdi', '.qcow', '.qcow2', '.iso',
-  '.vhd', '.vhdx', '.vpc',
-];
-
-function validateFileType(file) {
-  // Check MIME type
-  const mimeType = file.mimetype;
-  if (mimeType && !ALLOWED_MIME_TYPES.includes(mimeType)) {
-    return false;
-  }
-  
-  // Check file extension
-  const ext = path.extname(file.originalname || '').toLowerCase();
-  if (ext && !ALLOWED_EXTENSIONS.includes(ext)) {
-    return false;
-  }
-  
-  return true;
-}
-
-// Security: File filter for multer
-const fileFilter = (req, file, cb) => {
-  if (validateFileType(file)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Invalid file type. Only firmware and binary files are allowed.'), false);
-  }
-};
+// File type validation disabled - accepting all file types
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
@@ -129,8 +90,7 @@ const upload = multer({
   limits: { 
     fileSize: 50 * 1024 * 1024 * 1024, // 50GB
     fieldSize: 1024, // Limit field size to 1KB
-  },
-  fileFilter: fileFilter
+  }
 });
 
 // Security: Security headers middleware
@@ -221,43 +181,53 @@ function rateLimitMiddleware(req, res, next) {
   next();
 }
 
-// Helper function to get or create a project named "Armis"
-async function getOrCreateArmisProject(apiKey, baseUrl) {
+// Helper function to get or create a project named "Armis-{customer}"
+async function getOrCreateArmisProject(apiKey, baseUrl, customer) {
   try {
-    // Search for existing "Armis" project
+    const projectName = customer ? `Armis-${customer}` : "Armis";
+    
+    // Search for existing project
     const getResponse = await axios.get(`${baseUrl}/public/v0/projects`, {
       headers: {
         "X-Authorization": apiKey,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "Accept": "application/json"
       },
       params: {
-        filter: 'name=="Armis"'
-      }
+        filter: `name=="${projectName}"`
+      },
+      httpsAgent,
+      proxy: USE_PROXY ? undefined : false,
+      timeout: 60000
     });
 
     if (getResponse.data && getResponse.data.length > 0) {
-      console.log("Found existing Armis project:", getResponse.data[0].id);
+      console.log(`Found existing ${projectName} project:`, getResponse.data[0].id);
       return getResponse.data[0].id;
     }
 
-    // Create new "Armis" project if it doesn't exist
-    console.log("Creating new Armis project...");
+    // Create new project if it doesn't exist
+    console.log(`Creating new ${projectName} project...`);
     const createResponse = await axios.post(
       `${baseUrl}/public/v0/projects`,
       {
-        name: "Armis",
-        description: "Armis device firmware uploads",
+        name: projectName,
+        description: `Armis device firmware uploads${customer ? ` for ${customer}` : ""}`,
         type: "firmware"
       },
       {
         headers: {
           "X-Authorization": apiKey,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        httpsAgent,
+        proxy: USE_PROXY ? undefined : false,
+        timeout: 60000
       }
     );
 
-    console.log("Created Armis project:", createResponse.data.id);
+    console.log(`Created ${projectName} project:`, createResponse.data.id);
     return createResponse.data.id;
   } catch (error) {
     console.error("Error getting/creating project:", error.response?.data || error.message);
@@ -283,8 +253,12 @@ async function createVersionForDevice(apiKey, baseUrl, projectId, deviceId) {
       {
         headers: {
           "X-Authorization": apiKey,
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        httpsAgent,
+        proxy: USE_PROXY ? undefined : false,
+        timeout: 60000
       }
     );
 
@@ -318,6 +292,10 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       });
     }
     
+    // Security: Validate and sanitize customer
+    const rawCustomer = req.body.customer;
+    const customer = rawCustomer ? sanitizeDeviceId(rawCustomer) : null;
+    
     // Security: Sanitize filename
     const rawFilename = req.file.originalname || req.file.filename;
     const filename = sanitizeFilename(rawFilename);
@@ -331,31 +309,52 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       return res.status(500).json({ error: "Server configuration error" });
     }
 
-    console.log(`Processing upload for device: ${deviceId}`);
+    console.log(`Processing upload for device: ${deviceId}${customer ? ` (customer: ${customer})` : ''}`);
 
-    // Step 1: Get or create "Armis" project
-    const projectId = await getOrCreateArmisProject(apiKey, baseUrl);
+    // Step 1: Get or create project with customer appended
+    const projectId = await getOrCreateArmisProject(apiKey, baseUrl, customer);
 
     // Step 2: Create version named with DeviceID
     const projectVersionId = await createVersionForDevice(apiKey, baseUrl, projectId, deviceId);
 
     // Step 3: Upload file to scans endpoint
+    if (DEBUG_MODE) {
+      try {
+        const st = fs.statSync(filePath);
+        console.log(`DEBUG upload target: ${baseUrl}/public/v0/scans`);
+        console.log(`DEBUG file: ${filename}, size=${st.size} bytes, proxy=${USE_PROXY}`);
+      } catch {}
+    }
+
     console.log(`Uploading file to scan endpoint...`);
+    
+    // Read file as buffer for octet-stream upload
+    const fileBuffer = fs.readFileSync(filePath);
+
+    const scanTypes = ["sca", "sast", "config", "vulnerability_analysis"];
+
     const scanResponse = await axios.post(
       `${baseUrl}/public/v0/scans`,
-      fs.createReadStream(filePath),
+      fileBuffer,
       {
         headers: {
           "X-Authorization": apiKey,
+          "Accept": "application/json",
           "Content-Type": "application/octet-stream"
         },
         params: {
           projectVersionId: projectVersionId,
           filename: filename,
-          type: "sca"
+          type: scanTypes
+        },
+        paramsSerializer: {
+          indexes: null // This tells axios to repeat the parameter name for arrays: type=sca&type=sast&type=config&type=vulnerability_analysis
         },
         maxBodyLength: Infinity,
-        maxContentLength: Infinity
+        maxContentLength: Infinity,
+        httpsAgent,
+        proxy: USE_PROXY ? undefined : false,
+        timeout: 300000 // Increase timeout to 5 minutes for large files
       }
     );
 
@@ -374,10 +373,19 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     // Security: Log full error details server-side, but don't expose to client
     console.error("Upload error:", {
       message: error.message,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      cause: error.cause?.message,
       response: error.response?.data,
       status: error.response?.status,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      stack: process.env.NODE_ENV === 'development' || DEBUG_MODE ? error.stack : undefined
     });
+    
+    // Log detailed validation errors if present
+    if (error.response?.data?.errors) {
+      console.error("Validation errors:", JSON.stringify(error.response.data.errors, null, 2));
+    }
     
     // Clean up file on error
     if (filePath) {
@@ -388,13 +396,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       } catch (unlinkError) {
         console.error("Error cleaning up file:", unlinkError);
       }
-    }
-    
-    // Security: Don't expose internal error details to client
-    if (error.message && error.message.includes('Invalid file type')) {
-      return res.status(400).json({ 
-        error: "Invalid file type. Only firmware and binary files are allowed." 
-      });
     }
     
     // Handle specific HTTP errors

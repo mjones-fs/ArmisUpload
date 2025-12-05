@@ -474,6 +474,10 @@
         }
         
         const formData = new FormData(form);
+        // Add customer parameter if available
+        if (customer) {
+          formData.append('customer', customer);
+        }
         const xhr = new XMLHttpRequest();
         currentXhr = xhr;
         

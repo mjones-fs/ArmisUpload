@@ -6,7 +6,7 @@ A Node.js service for uploading firmware files to the Finite State platform with
 
 - Automatically creates or finds an "Armis" project
 - Creates a new version for each device using the DeviceID as the version name
-- Uploads firmware files to trigger SCA (Software Composition Analysis) scans
+- Uploads firmware files to trigger multiple security scans (SCA, SAST, Config, and Vulnerability Analysis)
 - Handles large file uploads (up to 50GB)
 
 ## Setup
@@ -88,6 +88,9 @@ Upload a firmware file for security scanning.
 
 - `API_KEY`: Your Finite State API key (required)
 - `API_BASE_URL`: Base URL for the Finite State API (default: https://api.finitestate.io)
+- `DEBUG`: Set to `true` or `1` to enable debug logging (optional, default: false)
+- `USE_PROXY`: Set to `false` to disable proxy usage from environment variables (optional, default: true)
+- `NODE_ENV`: Node.js environment (e.g., `production`, `development`). In production, TLS certificate verification is enforced.
 
 ## Example Usage
 
@@ -107,9 +110,14 @@ curl -X POST http://localhost:3000/upload \
 </form>
 ```
 
-## Scan Type
+## Scan Types
 
-The service triggers an **SCA** (Software Composition Analysis) scan, which generates an SBOM (Software Bill of Materials) as CycloneDX JSON format.
+The service triggers multiple security scans for each uploaded file:
+
+- **SCA** (Software Composition Analysis): Generates an SBOM (Software Bill of Materials) as CycloneDX JSON format
+- **SAST** (Static Application Security Testing): Analyzes source code for security vulnerabilities
+- **Config** (Configuration Analysis): Examines configuration files and settings for security issues
+- **Vulnerability Analysis**: Performs comprehensive vulnerability assessment
 
 ## Error Handling
 
