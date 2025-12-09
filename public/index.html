@@ -107,18 +107,26 @@
       }
       
       .form-group {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
+        position: relative;
+        margin-bottom: 8px;
       }
       
       label {
-        color: #1E3A5F;
-        font-size: 14px;
-        font-weight: 600;
+        position: absolute;
+        left: 16px;
+        top: 16px;
+        color: #6b7280;
+        font-size: 15px;
+        font-weight: 400;
+        transition: all 0.3s ease;
+        pointer-events: none;
+        background: transparent;
+        padding: 0 4px;
       }
       
-      input[type="text"] {
+      input[type="text"],
+      input[type="email"] {
+        width: 100%;
         padding: 16px;
         border: 1px solid #D1D5DB;
         border-radius: 8px;
@@ -127,16 +135,35 @@
         background: #F9FAFB;
       }
       
-      input[type="text"]:focus {
+      input[type="text"]:focus,
+      input[type="email"]:focus {
         outline: none;
         border-color: #FF6B35;
         box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
         background: white;
       }
       
+      input[type="text"]:focus + label,
+      input[type="email"]:focus + label,
+      input[type="text"]:not(:placeholder-shown) + label,
+      input[type="email"]:not(:placeholder-shown) + label,
+      input[type="text"].has-value + label,
+      input[type="email"].has-value + label {
+        top: -8px;
+        left: 12px;
+        font-size: 12px;
+        color: #FF6B35;
+        font-weight: 600;
+        background: white;
+      }
+      
       input[type="text"]:read-only {
         background-color: #F3F4F6;
         cursor: not-allowed;
+      }
+      
+      input[type="text"]:read-only + label {
+        color: #6b7280;
       }
       
       .file-upload-area {
@@ -341,8 +368,20 @@
       <div class="customer-name" id="customerName"></div>
       <form action="/upload" method="post" enctype="multipart/form-data">
         <div class="form-group">
+          <input type="text" id="name" name="name" placeholder="&nbsp;" required />
+          <label for="name">Name</label>
+        </div>
+        <div class="form-group">
+          <input type="email" id="email" name="email" placeholder="&nbsp;" required />
+          <label for="email">Email Address</label>
+        </div>
+        <div class="form-group">
+          <input type="text" id="deviceId" name="deviceId" placeholder="&nbsp;" required />
           <label for="deviceId">Device ID</label>
-          <input type="text" id="deviceId" name="deviceId" required />
+        </div>
+        <div class="form-group">
+          <input type="text" id="version" name="version" placeholder="&nbsp;" />
+          <label for="version">Version</label>
         </div>
         <div class="form-group">
           <label for="file">Select or Drop File</label>
@@ -375,6 +414,25 @@
     </div>
     
     <script>
+      // Floating label helper function
+      function updateFloatingLabel(input) {
+        if (input.value && input.value.trim() !== '') {
+          input.classList.add('has-value');
+        } else {
+          input.classList.remove('has-value');
+        }
+      }
+      
+      // Initialize floating labels on page load
+      document.addEventListener('DOMContentLoaded', function() {
+        const inputs = document.querySelectorAll('input[type="text"], input[type="email"]');
+        inputs.forEach(input => {
+          updateFloatingLabel(input);
+          input.addEventListener('input', () => updateFloatingLabel(input));
+          input.addEventListener('change', () => updateFloatingLabel(input));
+        });
+      });
+      
       // Security: Sanitize input to prevent XSS
       function sanitizeInput(input) {
         if (!input || typeof input !== 'string') {
@@ -395,6 +453,16 @@
         return /^[a-zA-Z0-9._-]+$/.test(deviceId) && deviceId.length <= 255;
       }
       
+      // Security: Validate email format
+      function validateEmail(email) {
+        if (!email || typeof email !== 'string') {
+          return false;
+        }
+        // RFC 5322 compliant email regex (simplified)
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return emailRegex.test(email) && email.length <= 255;
+      }
+      
       // Parse URL parameters
       const urlParams = new URLSearchParams(window.location.search);
       const rawCustomer = urlParams.get('CUSTOMER');
@@ -413,6 +481,7 @@
         if (validateDeviceId(device)) {
           deviceInput.value = device;
           deviceInput.readOnly = true;
+          updateFloatingLabel(deviceInput);
         } else {
           console.warn('Invalid device ID format in URL parameter');
         }
@@ -434,6 +503,52 @@
       const dropArea = document.getElementById('dropArea');
       const fileNameEl = document.getElementById('fileName');
       
+      function extractVersionFromFilename(filename) {
+        // Remove file extension for matching (handle double extensions like .tar.gz)
+        let nameWithoutExt = filename;
+        // Common double extensions
+        const doubleExtensions = ['.tar.gz', '.tar.bz2', '.tar.xz', '.tar.Z'];
+        for (const ext of doubleExtensions) {
+          if (nameWithoutExt.endsWith(ext)) {
+            nameWithoutExt = nameWithoutExt.slice(0, -ext.length);
+            break;
+          }
+        }
+        // If no double extension matched, remove single extension
+        if (nameWithoutExt === filename) {
+          nameWithoutExt = nameWithoutExt.replace(/\.[^.]+$/, '');
+        }
+        
+        // Common version patterns (ordered by specificity):
+        const patterns = [
+          /[vV](\d+\.\d+\.\d+(?:\.\d+)?)/,  // v1.2.3 or V1.2.3.4
+          /[vV](\d+[._]\d+[._]\d+(?:[._]\d+)?)/,  // v1_2_3
+          /version[_-]?(\d+(?:[._]\d+)*)/i,  // version-1.2.3 or version_123
+          /fw[_-]?(\d+(?:[._]\d+)*)/i,  // fw-1.2.3 or fw_123
+          /rel[_-]?(\d+(?:[._]\d+)*)/i,  // rel-1.2.3 or rel_123
+          /-(latest|stable|beta|alpha|dev|prod|production|staging|canary|nightly)$/i,  // -latest, -stable, etc.
+          /_(latest|stable|beta|alpha|dev|prod|production|staging|canary|nightly)$/i,  // _latest, _stable, etc.
+          /-(x86_64|x86|x64|amd64|arm64|armv7|armv8|aarch64|i386|i686|mips|mipsel|ppc|ppc64)$/i,  // -x86, -arm64, etc.
+          /_(x86_64|x86|x64|amd64|arm64|armv7|armv8|aarch64|i386|i686|mips|mipsel|ppc|ppc64)$/i,  // _x86, _arm64, etc.
+          /(\d+\.\d+\.\d+(?:\.\d+)?)/,  // 1.2.3 or 1.2.3.4
+          /_(\d{6,})$/,  // _202510310 (6+ digits at end after underscore)
+          /-(\d{6,})$/,  // -202510310 (6+ digits at end after hyphen)
+          /_(\d+)$/,  // _123 (any digits at end after underscore)
+          /-(\d+)$/   // -123 (any digits at end after hyphen)
+        ];
+        
+        for (const pattern of patterns) {
+          const match = nameWithoutExt.match(pattern);
+          if (match && match[1]) {
+            // Normalize underscores to dots for dotted versions, keep text as-is
+            const version = match[1].replace(/_/g, '.');
+            return version;
+          }
+        }
+        
+        return '';
+      }
+      
       function setFiles(files) {
         if (!files || files.length === 0) return;
         const dt = new DataTransfer();
@@ -446,6 +561,13 @@
           ? fileName.substring(0, maxDisplayLength) + '...' 
           : fileName;
         fileNameEl.textContent = displayName;
+        
+        // Extract and populate version field (always overwrite)
+        const versionInput = document.getElementById('version');
+        const extractedVersion = extractVersionFromFilename(fileName);
+        // Always set the value - overwrite existing if version is found, clear if not
+        versionInput.value = extractedVersion;
+        updateFloatingLabel(versionInput);
       }
       
       if (dropArea) {
@@ -462,6 +584,14 @@
       
       form.addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Validate email format
+        const emailInput = document.getElementById('email');
+        if (!validateEmail(emailInput.value)) {
+          messageDiv.className = 'message error';
+          messageDiv.textContent = 'Please enter a valid email address.';
+          return;
+        }
         
         // Ensure a file is selected before submitting
         if (!fileInput.files || fileInput.files.length === 0) {
@@ -512,11 +642,14 @@
               messageDiv.className = 'message success';
               messageDiv.textContent = 'File uploaded successfully!';
               form.reset();
+              fileNameEl.textContent = '';
+              document.getElementById('version').value = '';
               
               // Restore device ID if it was pre-filled
               if (rawDevice && validateDeviceId(sanitizeInput(rawDevice))) {
                 deviceInput.value = sanitizeInput(rawDevice);
                 deviceInput.readOnly = true;
+                updateFloatingLabel(deviceInput);
               }
             } catch (e) {
               messageDiv.className = 'message error';

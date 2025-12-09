@@ -47,6 +47,43 @@ function sanitizeDeviceId(deviceId) {
   return sanitized;
 }
 
+function sanitizeName(name) {
+  if (!name || typeof name !== 'string') {
+    return null;
+  }
+  
+  // Remove any whitespace from beginning/end
+  let sanitized = name.trim();
+  
+  // Limit length
+  if (sanitized.length > 255 || sanitized.length < 1) {
+    return null;
+  }
+  
+  // Remove control characters but allow spaces, letters, numbers, and common punctuation
+  sanitized = sanitized.replace(/[\x00-\x1F\x7F]/g, '');
+  
+  return sanitized;
+}
+
+function validateEmail(email) {
+  if (!email || typeof email !== 'string') {
+    return false;
+  }
+  
+  // Trim whitespace
+  const trimmed = email.trim();
+  
+  // Limit length
+  if (trimmed.length > 255) {
+    return false;
+  }
+  
+  // RFC 5322 compliant email regex (simplified)
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(trimmed);
+}
+
 function sanitizeFilename(filename) {
   if (!filename || typeof filename !== 'string') {
     return 'uploaded-file';
@@ -281,6 +318,27 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     
     filePath = req.file.path;
     
+    // Security: Validate and sanitize name
+    const rawName = req.body.name;
+    const name = sanitizeName(rawName);
+    
+    if (!name) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ 
+        error: "Invalid Name. Name must be between 1 and 255 characters." 
+      });
+    }
+    
+    // Security: Validate email
+    const rawEmail = req.body.email;
+    if (!validateEmail(rawEmail)) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ 
+        error: "Invalid Email Address. Please provide a valid email address." 
+      });
+    }
+    const email = rawEmail.trim();
+    
     // Security: Validate and sanitize deviceId
     const rawDeviceId = req.body.deviceId;
     const deviceId = sanitizeDeviceId(rawDeviceId);
@@ -291,6 +349,10 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
         error: "Invalid DeviceID. DeviceID must be alphanumeric and may contain dots, hyphens, or underscores. Maximum length is 255 characters." 
       });
     }
+    
+    // Security: Validate and sanitize version (optional)
+    const rawVersion = req.body.version;
+    const version = rawVersion && rawVersion.trim() ? sanitizeDeviceId(rawVersion.trim()) : null;
     
     // Security: Validate and sanitize customer
     const rawCustomer = req.body.customer;
