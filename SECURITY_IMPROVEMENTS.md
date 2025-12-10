@@ -31,29 +31,34 @@ This document outlines all the security improvements implemented to address the 
 **Impact**: Prevents path traversal attacks and command injection via filenames.
 
 ### 3. ✅ File Type Validation
-**Location**: `server.js:62-95, 97-103`
+**Location**: `server.js:115-180`
 
 - Added `validateFileType()` function that checks:
   - MIME type against whitelist of allowed types
   - File extension against whitelist of allowed extensions
 - Configured multer with `fileFilter` to reject invalid file types
 - Allowed file types include:
-  - Binary/firmware files: `.bin`, `.elf`, `.hex`, `.img`, `.fw`, `.firmware`
-  - Archives: `.zip`, `.tar`, `.gz`, `.tgz`, `.xz`, `.7z`
-  - Libraries: `.so`, `.a`, `.o`, `.dll`, `.exe`
+  - Binary/firmware files: `.bin`, `.elf`, `.hex`, `.img`, `.fw`, `.firmware`, `.rom`, `.dmp`
+  - Archives: `.zip`, `.tar`, `.gz`, `.tgz`, `.xz`, `.7z`, `.rar`, `.bz2`
+  - Libraries: `.so`, `.a`, `.o`, `.dll`, `.exe`, `.dylib`, `.lib`
+  - VM images: `.vmdk`, `.ova`, `.vdi`, `.qcow`, `.qcow2`, `.iso`, `.vhd`, `.vhdx`, `.vpc`
+  - Package formats: `.rpm`, `.deb`, `.apk`, `.cab`, `.msi`
+  - Filesystem images: `.cpio`, `.squashfs`, `.cramfs`, `.jffs2`, `.ubifs`
 
-**Impact**: Prevents malicious file uploads and ensures only legitimate firmware files are processed.
+**Impact**: Prevents malicious file uploads and ensures only legitimate firmware and related files are processed.
 
 ### 4. ✅ Security Headers
-**Location**: `server.js:105-135`
+**Location**: `server.js:200-240`
 
 Implemented comprehensive security headers:
 - `X-Frame-Options: DENY` - Prevents clickjacking
 - `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
 - `X-XSS-Protection: 1; mode=block` - Legacy XSS protection
-- `Content-Security-Policy` - Restricts resource loading to prevent XSS
+- `Content-Security-Policy` - Restricts resource loading to prevent XSS (includes base-uri and form-action directives)
 - `Referrer-Policy: strict-origin-when-cross-origin` - Controls referrer information
-- `Permissions-Policy` - Restricts browser features
+- `Permissions-Policy` - Restricts browser features (geolocation, microphone, camera, payment, USB, sensors)
+- `X-DNS-Prefetch-Control: off` - Prevents DNS prefetching
+- `X-Download-Options: noopen` - Prevents IE from executing downloads in site context
 
 **Impact**: Protects against XSS, clickjacking, and MIME type confusion attacks.
 
@@ -94,14 +99,16 @@ Implemented comprehensive security headers:
 **Impact**: Prevents information disclosure that could aid attackers.
 
 ### 8. ✅ URL Parameter Sanitization (Client-Side)
-**Location**: `public/index.html:340-375`
+**Location**: `public/index.html:436-488`
 
 - Added `sanitizeInput()` function to remove HTML and limit length
 - Added `validateDeviceId()` function to validate device ID format
+- Added `validateEmail()` function for email validation
 - All URL parameters are sanitized before use
-- Uses `textContent` instead of `innerHTML` (already was safe, but now validated)
+- Uses `textContent` instead of `innerHTML` (no innerHTML usage in codebase)
+- Filename display length limiting (60 characters)
 
-**Impact**: Prevents reflected XSS attacks via URL parameters.
+**Impact**: Prevents reflected XSS attacks via URL parameters and ensures safe display of user input.
 
 ### 9. ✅ Additional Security Enhancements
 
@@ -118,10 +125,18 @@ Implemented comprehensive security headers:
 - Returns generic error if missing (doesn't expose configuration issues)
 
 #### File Cleanup on Errors
-**Location**: `server.js:220-230`
+**Location**: `server.js:680-750`
 
 - Ensures uploaded files are cleaned up even on validation errors
 - Prevents disk space exhaustion
+- File cleanup on all error paths including file type validation errors
+
+#### Static File Security
+**Location**: `server.js:242-255`
+
+- Disabled directory listing for static files
+- Proper cache control headers (no-cache for HTML files)
+- Prevents information disclosure through directory listings
 
 ## Security Best Practices Now Implemented
 

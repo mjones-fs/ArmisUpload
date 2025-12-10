@@ -8,39 +8,62 @@ Based on the `specs.json` API specification, I've implemented a complete workflo
 
 The implementation follows these steps when a file is uploaded:
 
-### 1. Get or Create "Armis" Project
-- **Endpoint**: `GET /public/v0/projects?filter=name=="Armis"`
-- Searches for an existing project named "Armis"
+### 1. Input Validation and File Type Validation
+- Validates and sanitizes all input fields (name, email, deviceId, version, customer)
+- Validates file type against whitelist of allowed firmware, binary, archive, and VM image file types
+- Rejects invalid file types before storage
+
+### 2. Get or Create Customer Folder (if customer provided)
+- **Endpoint**: `GET /public/v0/folders?filter=name=="{customer}"`
+- Searches for an existing folder named after the customer
+- If not found, creates a new folder:
+  - **Endpoint**: `POST /public/v0/folders`
+  - **Body**: 
+    ```json
+    {
+      "name": "{customer}",
+      "description": "Folder for Armis device firmware uploads for {customer}"
+    }
+    ```
+
+### 3. Get or Create Project (named after Device ID)
+- **Endpoint**: `GET /public/v0/projects?filter=name=="{deviceId}"`
+- Searches for an existing project named after the Device ID
 - If not found, creates a new project:
   - **Endpoint**: `POST /public/v0/projects`
   - **Body**: 
     ```json
     {
-      "name": "Armis",
-      "description": "Armis device firmware uploads",
-      "type": "firmware"
+      "name": "{deviceId}",
+      "description": "Armis device firmware uploads for {customer}",
+      "type": "firmware",
+      "folderId": "{folderId}" // if customer folder exists
     }
     ```
+- If project exists but folder was created, assigns project to folder
 
-### 2. Create Version
+### 4. Create Version
 - **Endpoint**: `POST /public/v0/projects/{projectId}/versions`
-- Creates a new version using the DeviceID as the version name
+- Creates a new version using the provided version value
 - **Body**:
   ```json
   {
-    "version": "{deviceId}",
+    "version": "{version}",
     "releaseType": "RELEASE"
   }
   ```
 
-### 3. Upload and Trigger Scan
+### 5. Upload and Trigger Scan
 - **Endpoint**: `POST /public/v0/scans`
 - Uploads the binary file with the following parameters:
-  - `projectVersionId`: The ID of the version created in step 2
-  - `filename`: Original filename
+  - `projectVersionId`: The ID of the version created in step 4
+  - `filename`: Sanitized original filename
   - `type`: Array of scan types: `["sca", "sast", "config", "vulnerability_analysis"]`
 - **Content-Type**: `application/octet-stream`
-- File is streamed directly from disk
+- File is read as buffer and uploaded
+
+### 6. Cleanup
+- Automatically deletes the temporary uploaded file (success or failure)
 
 ## API Specification Reference
 
@@ -62,12 +85,16 @@ The implementation is based on the following endpoints from `specs.json`:
 
 ## Key Features
 
-- **Idempotent Project Creation**: Checks if "Armis" project exists before creating
-- **Device-based Versioning**: Each device gets its own version in the project
-- **Comprehensive Scanning**: Triggers all available scan types automatically
-- **Large File Support**: Configured to handle files up to 50GB
+- **Input Validation**: Comprehensive validation and sanitization of all inputs
+- **File Type Validation**: Whitelist-based validation for firmware, binary, archive, and VM image files
+- **Idempotent Project Creation**: Checks if project exists before creating (named after Device ID)
+- **Customer Folder Management**: Automatically creates and organizes projects by customer
+- **Version Management**: Creates versions using the provided version value
+- **Comprehensive Scanning**: Triggers all available scan types automatically (SCA, SAST, Config, Vulnerability Analysis)
+- **Large File Support**: Configured to handle files up to 50GB with extended timeouts
 - **Error Handling**: Proper cleanup and error reporting for all failure scenarios
-- **Authentication**: Uses Bearer token authentication with API key
+- **Security**: Rate limiting, security headers, XSS prevention, path traversal prevention
+- **Authentication**: Uses X-Authorization header with API key for Finite State API
 
 ## Environment Configuration
 
@@ -77,16 +104,31 @@ The service requires the following environment variables:
 
 ## Files Modified/Created
 
-1. **server.js** - Main implementation with three helper functions:
+1. **server.js** - Main implementation with helper functions:
+   - `sanitizeDeviceId()` - Device ID validation and sanitization
+   - `sanitizeName()` - Name validation and sanitization
+   - `validateEmail()` - Email validation
+   - `sanitizeFilename()` - Filename sanitization and path traversal prevention
+   - `validateFileType()` - File type validation
+   - `getOrCreateFolder()` - Customer folder management
    - `getOrCreateArmisProject()` - Project management
    - `createVersionForDevice()` - Version creation
-   - Updated `/upload` endpoint with complete workflow
+   - `/upload` endpoint with complete workflow and security controls
+   - Security headers middleware
+   - Rate limiting middleware
 
-2. **.env** - Updated to use `API_BASE_URL` instead of `API_ENDPOINT`
+2. **public/index.html** - Web UI with:
+   - Drag-and-drop file upload
+   - Progress tracking
+   - Client-side input validation
+   - XSS prevention
+   - Version extraction from filename
 
-3. **New Files**:
-   - `.env.example` - Template for environment configuration
-   - `README.md` - Complete documentation
+3. **Documentation Files**:
+   - `README.md` - Complete user documentation
+   - `SECURITY_AUDIT.md` - Comprehensive security audit
+   - `SECURITY_IMPROVEMENTS.md` - Security improvements documentation
+   - `SECURITY_REVIEW_UPDATE.md` - Security review updates
    - `IMPLEMENTATION.md` - This file
 
 ## Testing
@@ -116,7 +158,10 @@ Expected response:
 
 ## Notes
 
-- Each upload creates a new version, even for the same device
-- The "Armis" project is created once and reused for all subsequent uploads
-- All four scan types are triggered automatically for comprehensive analysis
+- Each upload creates a new version in the project named after the Device ID
+- Projects are created per Device ID and organized by customer folders (if customer is provided)
+- All four scan types (SCA, SAST, Config, Vulnerability Analysis) are triggered automatically for comprehensive analysis
 - Files are automatically cleaned up after upload (success or failure)
+- Comprehensive security controls are implemented including input validation, file type validation, rate limiting, and security headers
+- The web UI supports URL parameters (`?CUSTOMER=name&DEVICE=device-id`) to pre-populate form fields
+- Version field can be auto-populated from filename patterns (e.g., v1.2.3, version-1.2.3, etc.)

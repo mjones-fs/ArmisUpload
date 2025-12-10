@@ -641,19 +641,12 @@
               const response = JSON.parse(xhr.responseText);
               messageDiv.className = 'message success';
               messageDiv.textContent = 'File uploaded successfully!';
-              form.reset();
-              fileNameEl.textContent = '';
-              document.getElementById('version').value = '';
-              
-              // Restore device ID if it was pre-filled
-              if (rawDevice && validateDeviceId(sanitizeInput(rawDevice))) {
-                deviceInput.value = sanitizeInput(rawDevice);
-                deviceInput.readOnly = true;
-                updateFloatingLabel(deviceInput);
-              }
+              // Keep form populated - do not reset
+              // Keep upload button disabled to prevent re-upload
             } catch (e) {
               messageDiv.className = 'message error';
               messageDiv.textContent = 'Upload failed: Invalid response from server';
+              uploadBtn.disabled = false;
             }
           } else {
             try {
@@ -665,9 +658,8 @@
               messageDiv.className = 'message error';
               messageDiv.textContent = 'Upload failed: Server error';
             }
+            uploadBtn.disabled = false;
           }
-          
-          uploadBtn.disabled = false;
         });
         
         // Handle errors

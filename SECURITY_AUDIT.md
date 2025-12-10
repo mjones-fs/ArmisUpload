@@ -34,37 +34,41 @@ This security audit reviewed the current state of the Armis Upload application. 
 
 ### ✅ 2. File Upload Security
 
-**File Type Validation** (`server.js:78-123`)
+**File Type Validation** (`server.js:115-165`)
 - ✅ MIME type whitelist validation
 - ✅ File extension whitelist validation
 - ✅ Supports firmware, binary, archive, and VM image file types
 - ✅ Rejects unauthorized file types at upload time
+- ✅ Comprehensive whitelist including: `.bin`, `.elf`, `.hex`, `.img`, `.fw`, `.firmware`, `.rom`, `.dmp`, `.zip`, `.tar`, `.gz`, `.vmdk`, `.iso`, `.rpm`, `.deb`, `.apk`, and more
 
 **File Size Limits** (`server.js:142-149`)
 - ✅ 50GB maximum file size (configurable)
 - ✅ 1KB field size limit
 - ✅ Request body size limits (1MB for URL-encoded and JSON)
 
-**File Storage** (`server.js:134-141`)
+**File Storage** (`server.js:167-180`)
 - ✅ Secure filename generation (timestamp-based)
 - ✅ Automatic cleanup after processing
 - ✅ Cleanup on errors
+- ✅ File type validation before storage
 
 ### ✅ 3. Security Headers
 
-**Implemented Headers** (`server.js:151-180`)
+**Implemented Headers** (`server.js:200-240`)
 - ✅ `X-Frame-Options: DENY` - Prevents clickjacking
 - ✅ `X-Content-Type-Options: nosniff` - Prevents MIME type sniffing
 - ✅ `X-XSS-Protection: 1; mode=block` - Legacy XSS protection
-- ✅ `Content-Security-Policy` - Restricts resource loading
+- ✅ `Content-Security-Policy` - Restricts resource loading with strict policy
 - ✅ `Referrer-Policy: strict-origin-when-cross-origin` - Controls referrer information
-- ✅ `Permissions-Policy` - Restricts browser features
+- ✅ `Permissions-Policy` - Restricts browser features (geolocation, microphone, camera, etc.)
+- ✅ `X-DNS-Prefetch-Control: off` - Prevents DNS prefetching
+- ✅ `X-Download-Options: noopen` - Prevents IE from executing downloads in site context
 
 ### ✅ 4. Rate Limiting
 
-**Implementation** (`server.js:187-237`)
+**Implementation** (`server.js:250-290`)
 - ✅ In-memory rate limiting (10 requests per 15 minutes per IP)
-- ✅ Automatic cleanup of old entries
+- ✅ Automatic cleanup of old entries (prevents memory leaks)
 - ✅ HTTP 429 response with `Retry-After` header
 - ✅ Prevents DoS and API abuse
 
@@ -72,19 +76,22 @@ This security audit reviewed the current state of the Armis Upload application. 
 
 ### ✅ 5. Error Handling
 
-**Secure Error Responses** (`server.js:420-479`)
+**Secure Error Responses** (`server.js:680-750`)
 - ✅ Generic error messages to clients
 - ✅ Detailed logging server-side only
-- ✅ Specific handling for different error types
+- ✅ Specific handling for different error types (413, 401, 403, 429, file type validation)
 - ✅ No information disclosure in error responses
+- ✅ File cleanup on all error paths
 
 ### ✅ 6. XSS Prevention (Client-Side)
 
-**Client-Side Protection** (`public/index.html:381-422`)
+**Client-Side Protection** (`public/index.html:436-488`)
 - ✅ Input sanitization function
 - ✅ Device ID validation
-- ✅ Uses `textContent` instead of `innerHTML`
+- ✅ Email validation
+- ✅ Uses `textContent` instead of `innerHTML` (no innerHTML usage found)
 - ✅ Filename display length limiting (60 characters)
+- ✅ URL parameter sanitization
 
 ### ✅ 7. TLS/HTTPS Configuration
 
@@ -97,10 +104,11 @@ This security audit reviewed the current state of the Armis Upload application. 
 
 ### ✅ 8. Directory Security
 
-**Uploads Directory Checks** (`server.js:482-499`)
+**Uploads Directory Checks** (`server.js:740-760`)
 - ✅ Directory existence validation
 - ✅ Directory type validation
 - ✅ Server startup validation
+- ✅ Static file serving with proper cache control headers
 
 ## Current Security Status by Category
 

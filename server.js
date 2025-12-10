@@ -112,18 +112,87 @@ function sanitizeFilename(filename) {
   return sanitized;
 }
 
-// File type validation disabled - accepting all file types
+// Security: File type validation - allow common firmware and binary file types
+// Note: Firmware files can have various formats, so we use a permissive whitelist
+const ALLOWED_MIME_TYPES = [
+  'application/octet-stream', // Generic binary (most common for firmware)
+  'application/x-executable',
+  'application/x-elf',
+  'application/x-sharedlib',
+  'application/x-archive',
+  'application/zip',
+  'application/x-tar',
+  'application/gzip',
+  'application/x-gzip',
+  'application/x-xz',
+  'application/x-7z-compressed',
+  'application/x-vmdk',
+  'application/x-virtualbox-vdi',
+  'application/x-qemu-disk',
+  'application/x-iso9660-image',
+  'image/x-iso9660-image',
+  'application/vnd.ms-cab-compressed',
+  'application/x-rpm',
+  'application/x-debian-package',
+  'application/vnd.android.package-archive',
+];
+
+const ALLOWED_EXTENSIONS = [
+  '.bin', '.elf', '.hex', '.img', '.fw', '.firmware', '.rom', '.dmp',
+  '.zip', '.tar', '.gz', '.tgz', '.xz', '.7z', '.rar', '.bz2',
+  '.so', '.a', '.o', '.dll', '.exe', '.dylib', '.lib',
+  '.vmdk', '.ova', '.vdi', '.qcow', '.qcow2', '.iso', '.vhd', '.vhdx', '.vpc',
+  '.rpm', '.deb', '.apk', '.cab', '.msi',
+  '.cpio', '.squashfs', '.cramfs', '.jffs2', '.ubifs',
+];
+
+function validateFileType(file) {
+  // Check MIME type if provided
+  if (file.mimetype) {
+    // application/octet-stream is allowed (common for firmware)
+    // but we still validate by extension
+    if (file.mimetype !== 'application/octet-stream' && !ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return false;
+    }
+  }
+  
+  // Check file extension (required for validation)
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  if (!ext) {
+    // No extension - reject unless MIME type is explicitly allowed
+    if (file.mimetype && ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+      return true;
+    }
+    return false;
+  }
+  
+  if (!ALLOWED_EXTENSIONS.includes(ext)) {
+    return false;
+  }
+  
+  return true;
+}
 
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, "uploads/");
   },
   filename: function (req, file, cb) {
+    // Security: Use timestamp-based filename to prevent conflicts and path issues
     cb(null, file.fieldname + "-" + Date.now());
   },
 });
+
 const upload = multer({ 
   storage: storage,
+  fileFilter: function (req, file, cb) {
+    // Security: Validate file type before accepting upload
+    if (validateFileType(file)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Invalid file type. Allowed types: firmware, binary, archive, and VM image files.`), false);
+    }
+  },
   limits: { 
     fileSize: 50 * 1024 * 1024 * 1024, // 50GB
     fieldSize: 1024, // Limit field size to 1KB
@@ -141,28 +210,62 @@ app.use((req, res, next) => {
   // XSS Protection (legacy, but still useful)
   res.setHeader('X-XSS-Protection', '1; mode=block');
   
-  // Content Security Policy
+  // Content Security Policy - strict policy to prevent XSS
   res.setHeader('Content-Security-Policy', 
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline'; " +
-    "style-src 'self' 'unsafe-inline'; " +
+    "script-src 'self' 'unsafe-inline'; " + // unsafe-inline needed for inline scripts in HTML
+    "style-src 'self' 'unsafe-inline'; " + // unsafe-inline needed for inline styles in HTML
     "img-src 'self' data:; " +
     "font-src 'self'; " +
     "connect-src 'self'; " +
-    "frame-ancestors 'none';"
+    "frame-ancestors 'none'; " +
+    "base-uri 'self'; " +
+    "form-action 'self';"
   );
   
   // Referrer Policy
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   
-  // Permissions Policy
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+  // Permissions Policy (formerly Feature-Policy)
+  res.setHeader('Permissions-Policy', 
+    'geolocation=(), ' +
+    'microphone=(), ' +
+    'camera=(), ' +
+    'payment=(), ' +
+    'usb=(), ' +
+    'magnetometer=(), ' +
+    'gyroscope=(), ' +
+    'accelerometer=()'
+  );
+  
+  // Strict Transport Security (HSTS) - only set if using HTTPS
+  // Note: Only set this header if the application is served over HTTPS
+  // res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  
+  // Prevent DNS prefetching
+  res.setHeader('X-DNS-Prefetch-Control', 'off');
+  
+  // Prevent IE from executing downloads in site context
+  res.setHeader('X-Download-Options', 'noopen');
   
   next();
 });
 
 // Security: Request size limits
-app.use(express.static("public"));
+// Note: Static files are served from public directory
+app.use(express.static("public", {
+  // Security: Disable directory listing but allow index.html
+  index: 'index.html',
+  // Security: Set cache control for static assets
+  setHeaders: (res, path) => {
+    // Don't cache HTML files to ensure updates are reflected
+    if (path.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '1mb' })); // Limit URL-encoded bodies
 app.use(express.json({ limit: '1mb' })); // Limit JSON bodies
 
@@ -218,10 +321,70 @@ function rateLimitMiddleware(req, res, next) {
   next();
 }
 
-// Helper function to get or create a project named "Armis-{customer}"
-async function getOrCreateArmisProject(apiKey, baseUrl, customer) {
+// Helper function to get or create a folder named after the customer
+async function getOrCreateFolder(apiKey, baseUrl, customer) {
+  if (!customer) {
+    return null; // No folder if no customer specified
+  }
+
   try {
-    const projectName = customer ? `Armis-${customer}` : "Armis";
+    const folderName = customer;
+    
+    // Search for existing folder
+    const getResponse = await axios.get(`${baseUrl}/public/v0/folders`, {
+      headers: {
+        "X-Authorization": apiKey,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      params: {
+        filter: `name=="${folderName}"`
+      },
+      httpsAgent,
+      proxy: USE_PROXY ? undefined : false,
+      timeout: 60000
+    });
+
+    if (getResponse.data && getResponse.data.length > 0) {
+      console.log(`Found existing folder "${folderName}":`, getResponse.data[0].id);
+      return String(getResponse.data[0].id); // Ensure folderId is a string
+    }
+
+    // Create new folder if it doesn't exist
+    console.log(`Creating new folder "${folderName}"...`);
+    const createResponse = await axios.post(
+      `${baseUrl}/public/v0/folders`,
+      {
+        name: folderName,
+        description: `Folder for Armis device firmware uploads for ${customer}`
+      },
+      {
+        headers: {
+          "X-Authorization": apiKey,
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        httpsAgent,
+        proxy: USE_PROXY ? undefined : false,
+        timeout: 60000
+      }
+    );
+
+    console.log(`Created folder "${folderName}":`, createResponse.data.id);
+    return String(createResponse.data.id); // Ensure folderId is a string
+  } catch (error) {
+    console.error("Error getting/creating folder:", error.response?.data || error.message);
+    throw error;
+  }
+}
+
+// Helper function to get or create a project named after the Device ID
+async function getOrCreateArmisProject(apiKey, baseUrl, deviceId, customer, name, email) {
+  try {
+    const projectName = deviceId;
+    
+    // Get or create folder for customer (if customer is provided)
+    const folderId = await getOrCreateFolder(apiKey, baseUrl, customer);
     
     // Search for existing project
     const getResponse = await axios.get(`${baseUrl}/public/v0/projects`, {
@@ -240,51 +403,153 @@ async function getOrCreateArmisProject(apiKey, baseUrl, customer) {
 
     if (getResponse.data && getResponse.data.length > 0) {
       console.log(`Found existing ${projectName} project:`, getResponse.data[0].id);
+      // If project exists but folderId was provided, ensure it's in the folder
+      if (folderId) {
+        try {
+          await axios.put(
+            `${baseUrl}/public/v0/folders/${folderId}/projects`,
+            [getResponse.data[0].id],
+            {
+              headers: {
+                "X-Authorization": apiKey,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              httpsAgent,
+              proxy: USE_PROXY ? undefined : false,
+              timeout: 60000
+            }
+          );
+          console.log(`Assigned existing project to folder "${customer}"`);
+        } catch (folderError) {
+          // Log but don't fail if folder assignment fails
+          console.warn("Warning: Could not assign existing project to folder:", folderError.response?.data || folderError.message);
+        }
+      }
       return getResponse.data[0].id;
     }
 
     // Create new project if it doesn't exist
     console.log(`Creating new ${projectName} project...`);
-    const createResponse = await axios.post(
-      `${baseUrl}/public/v0/projects`,
-      {
-        name: projectName,
-        description: `Armis device firmware uploads${customer ? ` for ${customer}` : ""}`,
-        type: "firmware"
-      },
-      {
-        headers: {
-          "X-Authorization": apiKey,
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        },
-        httpsAgent,
-        proxy: USE_PROXY ? undefined : false,
-        timeout: 60000
+    let description = `Armis device firmware uploads${customer ? ` for ${customer}` : ""}`;
+    if (name && email) {
+      description += `, Contact name: ${name}, ${email}`;
+    }
+    const projectData = {
+      name: projectName,
+      description: description,
+      type: "firmware"
+    };
+    
+    // Add folderId if folder was created/found (ensure it's a string)
+    if (folderId) {
+      projectData.folderId = String(folderId);
+      if (DEBUG_MODE) {
+        console.log(`DEBUG: Creating project with folderId: ${projectData.folderId} (type: ${typeof projectData.folderId})`);
       }
-    );
+    }
+    
+    let createResponse;
+    try {
+      createResponse = await axios.post(
+        `${baseUrl}/public/v0/projects`,
+        projectData,
+        {
+          headers: {
+            "X-Authorization": apiKey,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          httpsAgent,
+          proxy: USE_PROXY ? undefined : false,
+          timeout: 60000
+        }
+      );
+    } catch (createError) {
+      // If creation with folderId fails, try without folderId and assign later
+      if (folderId && createError.response?.status === 500) {
+        console.warn(`Project creation with folderId failed, trying without folderId and assigning to folder after creation...`);
+        let descriptionWithoutFolder = `Armis device firmware uploads${customer ? ` for ${customer}` : ""}`;
+        if (name && email) {
+          descriptionWithoutFolder += `, Contact name: ${name}, ${email}`;
+        }
+        const projectDataWithoutFolder = {
+          name: projectName,
+          description: descriptionWithoutFolder,
+          type: "firmware"
+        };
+        
+        createResponse = await axios.post(
+          `${baseUrl}/public/v0/projects`,
+          projectDataWithoutFolder,
+          {
+            headers: {
+              "X-Authorization": apiKey,
+              "Content-Type": "application/json",
+              "Accept": "application/json"
+            },
+            httpsAgent,
+            proxy: USE_PROXY ? undefined : false,
+            timeout: 60000
+          }
+        );
+        
+        // Now assign to folder
+        try {
+          await axios.put(
+            `${baseUrl}/public/v0/folders/${folderId}/projects`,
+            [createResponse.data.id],
+            {
+              headers: {
+                "X-Authorization": apiKey,
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+              },
+              httpsAgent,
+              proxy: USE_PROXY ? undefined : false,
+              timeout: 60000
+            }
+          );
+          console.log(`Project assigned to folder "${customer}" after creation`);
+        } catch (folderError) {
+          console.warn("Warning: Could not assign project to folder:", folderError.response?.data || folderError.message);
+        }
+      } else {
+        // Re-throw if it's a different error or no folderId
+        throw createError;
+      }
+    }
 
     console.log(`Created ${projectName} project:`, createResponse.data.id);
+    if (folderId) {
+      console.log(`Project assigned to folder "${customer}"`);
+    }
     return createResponse.data.id;
   } catch (error) {
-    console.error("Error getting/creating project:", error.response?.data || error.message);
+    console.error("Error getting/creating project:", {
+      message: error.message,
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data,
+      folderId: folderId ? String(folderId) : null
+    });
     throw error;
   }
 }
 
-// Helper function to create a version with the DeviceID
-async function createVersionForDevice(apiKey, baseUrl, projectId, deviceId) {
+// Helper function to create a version with the specified version value
+async function createVersionForDevice(apiKey, baseUrl, projectId, version) {
   try {
     // Security: Validate projectId to prevent injection
     if (!projectId || typeof projectId !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(projectId)) {
       throw new Error('Invalid project ID');
     }
     
-    console.log(`Creating version for device ${deviceId}...`);
+    console.log(`Creating version ${version}...`);
     const createResponse = await axios.post(
       `${baseUrl}/public/v0/projects/${projectId}/versions`,
       {
-        version: deviceId,
+        version: version,
         releaseType: "RELEASE"
       },
       {
@@ -350,9 +615,22 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       });
     }
     
-    // Security: Validate and sanitize version (optional)
+    // Security: Validate and sanitize version (required)
     const rawVersion = req.body.version;
-    const version = rawVersion && rawVersion.trim() ? sanitizeDeviceId(rawVersion.trim()) : null;
+    if (!rawVersion || !rawVersion.trim()) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ 
+        error: "Version is required. Please provide a version value." 
+      });
+    }
+    const version = sanitizeDeviceId(rawVersion.trim());
+    
+    if (!version) {
+      fs.unlinkSync(filePath);
+      return res.status(400).json({ 
+        error: "Invalid Version. Version must be alphanumeric and may contain dots, hyphens, or underscores. Maximum length is 255 characters." 
+      });
+    }
     
     // Security: Validate and sanitize customer
     const rawCustomer = req.body.customer;
@@ -371,13 +649,13 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       return res.status(500).json({ error: "Server configuration error" });
     }
 
-    console.log(`Processing upload for device: ${deviceId}${customer ? ` (customer: ${customer})` : ''}`);
+    console.log(`Processing upload for device: ${deviceId}, version: ${version}${customer ? ` (customer: ${customer})` : ''}`);
 
-    // Step 1: Get or create project with customer appended
-    const projectId = await getOrCreateArmisProject(apiKey, baseUrl, customer);
+    // Step 1: Get or create project named after the Device ID
+    const projectId = await getOrCreateArmisProject(apiKey, baseUrl, deviceId, customer, name, email);
 
-    // Step 2: Create version named with DeviceID
-    const projectVersionId = await createVersionForDevice(apiKey, baseUrl, projectId, deviceId);
+    // Step 2: Create version named with the specified version value
+    const projectVersionId = await createVersionForDevice(apiKey, baseUrl, projectId, version);
 
     // Step 3: Upload file to scans endpoint
     if (DEBUG_MODE) {
@@ -484,6 +762,11 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     } else if (error.code === 'LIMIT_FILE_SIZE') {
       res.status(413).json({ 
         error: "File too large. Maximum file size is 50GB." 
+      });
+    } else if (error.message && error.message.includes('Invalid file type')) {
+      // Security: Handle file type validation errors
+      res.status(400).json({ 
+        error: error.message 
       });
     } else {
       res.status(500).json({ error: "Upload failed. Please try again later." });
