@@ -135,6 +135,9 @@ const ALLOWED_MIME_TYPES = [
   'application/x-rpm',
   'application/x-debian-package',
   'application/vnd.android.package-archive',
+  'application/json', // SBOM files
+  'text/xml', // SBOM files
+  'application/xml', // SBOM files
 ];
 
 const ALLOWED_EXTENSIONS = [
@@ -144,6 +147,13 @@ const ALLOWED_EXTENSIONS = [
   '.vmdk', '.ova', '.vdi', '.qcow', '.qcow2', '.iso', '.vhd', '.vhdx', '.vpc',
   '.rpm', '.deb', '.apk', '.cab', '.msi',
   '.cpio', '.squashfs', '.cramfs', '.jffs2', '.ubifs',
+];
+
+// SBOM file extensions
+const SBOM_EXTENSIONS = [
+  '.bom.json', '.cdx.json', '.bom.xml', '.cdx.xml', // CycloneDX formats
+  '.spdx.json', '.spdx', // SPDX formats
+  '.json', '.xml', // Generic formats (will default to CycloneDX)
 ];
 
 function validateFileType(file) {
@@ -158,6 +168,8 @@ function validateFileType(file) {
   
   // Check file extension (required for validation)
   const ext = path.extname(file.originalname || '').toLowerCase();
+  const filename = (file.originalname || '').toLowerCase();
+  
   if (!ext) {
     // No extension - reject unless MIME type is explicitly allowed
     if (file.mimetype && ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -166,11 +178,52 @@ function validateFileType(file) {
     return false;
   }
   
+  // Check if it's an SBOM file (including compound extensions)
+  if (isSbomFile(filename)) {
+    return true;
+  }
+  
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return false;
   }
   
   return true;
+}
+
+// Helper function to detect SBOM files by extension
+function isSbomFile(filename) {
+  if (!filename || typeof filename !== 'string') {
+    return false;
+  }
+  
+  const lowerFilename = filename.toLowerCase();
+  
+  // Check compound extensions first (e.g., .bom.json, .cdx.xml)
+  for (const ext of SBOM_EXTENSIONS) {
+    if (lowerFilename.endsWith(ext)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// Helper function to determine SBOM type from filename
+function getSbomType(filename) {
+  if (!filename || typeof filename !== 'string') {
+    return 'cdx'; // Default to CycloneDX
+  }
+  
+  const lowerFilename = filename.toLowerCase();
+  
+  // Check for SPDX indicators
+  if (lowerFilename.includes('spdx') || lowerFilename.endsWith('.spdx') || lowerFilename.endsWith('.spdx.json')) {
+    return 'spdx';
+  }
+  
+  // Default to CycloneDX for all other cases
+  // (including .bom.json, .cdx.json, .bom.xml, .cdx.xml, .json, .xml)
+  return 'cdx';
 }
 
 const storage = multer.diskStorage({
@@ -190,7 +243,7 @@ const upload = multer({
     if (validateFileType(file)) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type. Allowed types: firmware, binary, archive, and VM image files.`), false);
+      cb(new Error(`Invalid file type. Allowed types: firmware, binary, archive, VM image, and SBOM files (.json, .xml, .spdx, .cdx, .bom).`), false);
     }
   },
   limits: { 
@@ -657,58 +710,100 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     // Step 2: Create version named with the specified version value
     const projectVersionId = await createVersionForDevice(apiKey, baseUrl, projectId, version);
 
-    // Step 3: Upload file to scans endpoint
+    // Step 3: Determine if file is SBOM or binary and upload to appropriate endpoint
+    const isFileSbom = isSbomFile(filename);
+    
     if (DEBUG_MODE) {
       try {
         const st = fs.statSync(filePath);
-        console.log(`DEBUG upload target: ${baseUrl}/public/v0/scans`);
-        console.log(`DEBUG file: ${filename}, size=${st.size} bytes, proxy=${USE_PROXY}`);
+        const endpoint = isFileSbom ? `${baseUrl}/public/v0/scans/sbom` : `${baseUrl}/public/v0/scans`;
+        console.log(`DEBUG upload target: ${endpoint}`);
+        console.log(`DEBUG file: ${filename}, size=${st.size} bytes, isSBOM=${isFileSbom}, proxy=${USE_PROXY}`);
       } catch {}
     }
 
-    console.log(`Uploading file to scan endpoint...`);
+    console.log(`Uploading ${isFileSbom ? 'SBOM' : 'binary'} file to scan endpoint...`);
     
     // Read file as buffer for octet-stream upload
     const fileBuffer = fs.readFileSync(filePath);
 
-    const scanTypes = ["sca", "sast", "config", "vulnerability_analysis"];
-
-    const scanResponse = await axios.post(
-      `${baseUrl}/public/v0/scans`,
-      fileBuffer,
-      {
-        headers: {
-          "X-Authorization": apiKey,
-          "Accept": "application/json",
-          "Content-Type": "application/octet-stream"
-        },
-        params: {
-          projectVersionId: projectVersionId,
-          filename: filename,
-          type: scanTypes
-        },
-        paramsSerializer: {
-          indexes: null // This tells axios to repeat the parameter name for arrays: type=sca&type=sast&type=config&type=vulnerability_analysis
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
-        httpsAgent,
-        proxy: USE_PROXY ? undefined : false,
-        timeout: 300000 // Increase timeout to 5 minutes for large files
-      }
-    );
+    let scanResponse;
+    
+    if (isFileSbom) {
+      // Upload SBOM file
+      const sbomType = getSbomType(filename);
+      console.log(`SBOM type detected: ${sbomType}`);
+      
+      scanResponse = await axios.post(
+        `${baseUrl}/public/v0/scans/sbom`,
+        fileBuffer,
+        {
+          headers: {
+            "X-Authorization": apiKey,
+            "Accept": "application/json",
+            "Content-Type": "application/octet-stream"
+          },
+          params: {
+            projectVersionId: projectVersionId,
+            filename: filename,
+            type: sbomType
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          httpsAgent,
+          proxy: USE_PROXY ? undefined : false,
+          timeout: 300000 // Increase timeout to 5 minutes for large files
+        }
+      );
+    } else {
+      // Upload binary file
+      const scanTypes = ["sca", "sast", "config", "vulnerability_analysis"];
+      
+      scanResponse = await axios.post(
+        `${baseUrl}/public/v0/scans`,
+        fileBuffer,
+        {
+          headers: {
+            "X-Authorization": apiKey,
+            "Accept": "application/json",
+            "Content-Type": "application/octet-stream"
+          },
+          params: {
+            projectVersionId: projectVersionId,
+            filename: filename,
+            type: scanTypes
+          },
+          paramsSerializer: {
+            indexes: null // This tells axios to repeat the parameter name for arrays: type=sca&type=sast&type=config&type=vulnerability_analysis
+          },
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
+          httpsAgent,
+          proxy: USE_PROXY ? undefined : false,
+          timeout: 300000 // Increase timeout to 5 minutes for large files
+        }
+      );
+    }
 
     // Clean up uploaded file
     fs.unlinkSync(filePath);
 
     console.log("Scan triggered successfully");
-    res.json({ 
+    
+    // SBOM endpoint returns 204 with no data, binary endpoint returns 200 with data
+    const responseData = {
       success: true, 
       projectId: projectId,
       projectVersionId: projectVersionId,
-      message: "File uploaded and scan triggered successfully",
-      data: scanResponse.data 
-    });
+      message: `${isFileSbom ? 'SBOM' : 'Binary'} file uploaded and scan triggered successfully`
+    };
+    
+    // Only include scan data if it exists (binary scans return data, SBOM scans don't)
+    if (scanResponse.data) {
+      responseData.data = scanResponse.data;
+    }
+    
+    res.json(responseData);
   } catch (error) {
     // Security: Log full error details server-side, but don't expose to client
     console.error("Upload error:", {
