@@ -53,7 +53,7 @@
       
       .left-section h2 {
         color: #1E3A5F;
-        font-size: 24px;
+        font-size: 30px;
         font-weight: 600;
         margin-bottom: 30px;
       }
@@ -64,6 +64,7 @@
         font-size: 1rem;
         text-align: justify;
         color: #212529;
+        margin-bottom: 1em;
       }
       
       .right-section {
@@ -355,10 +356,13 @@
       <div class="left-section">
         <img src="fs-logo.webp" alt="Finite State Logo" class="logo-img">
         <h2>Finite State Binary & SBOM Analysis</h2>
-        <p>Uncover vulnerabilities and risks in your firmware and devices deployed on your network.</p>
-        <p>Simply upload the firmware or SBOM file and we'll take care of the rest. Our advanced scanning technology will detect the open source libraries and the associated licenses and vulnerabilities in these libraries.</p>
-        <p>Our reachability analysis will then identify if these vulnerabilities are present in your software, and provide you with the evidence you need in order to remediate.</p>
-        <p>If the vulnerabilities cannot be reached, then you can ignore them and focus on the ones that can be exploited.</p>
+        <p>Finite State allows you to get immediate, actionable insight into the security of your connected devices. With a simple binary upload of your device firmware, or an upload of an existing SBOM, our system automatically generates a Software Bill of Materials (SBOM) and a Device Risk Report tailored to your environment.</p>
+        <p>The SBOM shows you what's really inside your device firmware - the open source components, libraries, and versions that may introduce risk. Unlike generic SBOM tools, our analysis is performed directly on the binary itself, ensuring deep visibility into even the most opaque embedded systems. To make this information useful in your daily operations, the deliverable also includes a CSV report which correlates each software component to the actual device types in your inventory. This means that you don't just see a list of packages - you see how those packages affect the devices you rely on most.</p>
+        <p>To get started, simply enter some details and click Upload. We'll take care of the rest</p>
+        <p id="deviceIdDescription">The Device ID corresponds to the unique name of the device within your Armis environment. This can typically be seen on the Overview page.</p>
+        <p>The Firmware of SBOM Version is used to uniquely identify the version of the firmware or SBOM file. We will attempt to discern this from the name of the file you upload, but you can enter this value if you prefer.</p>
+        <p>Once uploaded, our analysis will identify the open source libraries which make up the file, as the CVE's associated with these libraries, and whether those vulnerabilities are actually reachable and exploitable.</p>
+        <p>We will then follow up with you on the email address entered in order to provide you with a free report detailing our findings.</p>
         <p>To find out more about Finite State, please visit <a href="https://finitestate.io" target="_blank">https://finitestate.io</a></p>
       </div>
       
@@ -375,13 +379,13 @@
           <input type="email" id="email" name="email" placeholder="&nbsp;" required />
           <label for="email">Email Address</label>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="deviceIdGroup">
           <input type="text" id="deviceId" name="deviceId" placeholder="&nbsp;" required />
           <label for="deviceId">Device ID</label>
         </div>
         <div class="form-group">
           <input type="text" id="version" name="version" placeholder="&nbsp;" />
-          <label for="version">Version</label>
+          <label for="version">Firmware / SBOM Version</label>
         </div>
         <div class="form-group">
           <label for="file">Select or Drop File</label>
@@ -476,12 +480,20 @@
       
       // Security: Validate and sanitize device ID
       const deviceInput = document.getElementById('deviceId');
+      const deviceIdGroup = document.getElementById('deviceIdGroup');
+      const deviceIdDescription = document.getElementById('deviceIdDescription');
       if (rawDevice) {
         const device = sanitizeInput(rawDevice);
         if (validateDeviceId(device)) {
           deviceInput.value = device;
-          deviceInput.readOnly = true;
           updateFloatingLabel(deviceInput);
+          // Hide the Device ID field and description when DEVICE parameter is present
+          if (deviceIdGroup) {
+            deviceIdGroup.style.display = 'none';
+          }
+          if (deviceIdDescription) {
+            deviceIdDescription.style.display = 'none';
+          }
         } else {
           console.warn('Invalid device ID format in URL parameter');
         }
