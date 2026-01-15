@@ -269,7 +269,7 @@ app.use((req, res, next) => {
     "script-src 'self' 'unsafe-inline'; " + // unsafe-inline needed for inline scripts in HTML
     "style-src 'self' 'unsafe-inline'; " + // unsafe-inline needed for inline styles in HTML
     "img-src 'self' data:; " +
-    "font-src 'self'; " +
+    "font-src 'self' data:; " + // Allow fonts from self and data URIs
     "connect-src 'self'; " +
     "frame-ancestors 'none'; " +
     "base-uri 'self'; " +

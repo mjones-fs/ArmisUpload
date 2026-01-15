@@ -5,6 +5,94 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Finite State - File Upload</title>
     <style>
+      /* Font Definitions */
+      @font-face {
+        font-family: 'TWK Everett';
+        src: url('fonts/TWKEverett-Light.woff2') format('woff2');
+        font-weight: 300;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'TWK Everett';
+        src: url('fonts/TWKEverett-Regular.woff2') format('woff2');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'TWK Everett';
+        src: url('fonts/TWKEverett-Medium.woff2') format('woff2');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'TWK Everett';
+        src: url('fonts/TWKEverett-Bold.woff2') format('woff2');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'Instrument Sans';
+        src: url('fonts/InstrumentSans-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'Instrument Sans';
+        src: url('fonts/InstrumentSans-Medium.ttf') format('truetype');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'Instrument Sans';
+        src: url('fonts/InstrumentSans-SemiBold.ttf') format('truetype');
+        font-weight: 600;
+        font-style: normal;
+        font-display: swap;
+      }
+      
+      @font-face {
+        font-family: 'Instrument Sans';
+        src: url('fonts/InstrumentSans-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      /* CSS Variables for Theme Colors */
+      :root {
+        --bg-primary: #0a0e14;
+        --bg-secondary: #111820;
+        --bg-card: #151c25;
+        --bg-input: #1a222d;
+        --border-color: #2a3544;
+        --border-focus: #00d4aa;
+        --accent-primary: #00d4aa;
+        --accent-primary-hover: #00e6b8;
+        --accent-secondary: #f5a623;
+        --accent-secondary-hover: #ffb534;
+        --text-primary: #ffffff;
+        --text-secondary: #a0aec0;
+        --text-muted: #6b7a8f;
+        --error-bg: rgba(239, 68, 68, 0.15);
+        --error-border: #ef4444;
+        --error-text: #fca5a5;
+        --success-bg: rgba(0, 212, 170, 0.15);
+        --success-border: #00d4aa;
+        --success-text: #6ee7c7;
+      }
+
       * {
         margin: 0;
         padding: 0;
@@ -12,28 +100,23 @@
       }
       
       body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";        background: #5B6670;
+        font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg-primary);
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         margin: 0;
         padding: 0;
-      }
-      
-      .header {
-        padding: 20px 40px;
-        background: #f5f5f5;
-        display: flex;
-        align-items: center;
-        gap: 20px;
+        color: var(--text-primary);
       }
       
       .logo-img {
-        height: 60px;
+        height: 50px;
         width: auto;
         max-width: 100%;
         align-self: center;
         object-fit: contain;
+        margin-bottom: 24px;
       }
       
       .main-wrapper {
@@ -43,83 +126,100 @@
       }
       
       .left-section {
-        flex: 2;
-        background: #f9f9f9;
-        padding: 60px 40px;
+        flex: 3;
+        background: var(--bg-secondary);
+        padding: 48px 40px;
         display: flex;
         flex-direction: column;
         justify-content: flex-start;
+        border-right: 1px solid var(--border-color);
       }
       
       .left-section h2 {
-        color: #1E3A5F;
-        font-size: 30px;
-        font-weight: 600;
-        margin-bottom: 30px;
+        font-family: 'TWK Everett', sans-serif;
+        color: var(--accent-primary);
+        font-size: 28px;
+        font-weight: 500;
+        margin-bottom: 28px;
+        letter-spacing: -0.02em;
       }
       
       .left-section p {
-        color: #555;
-        line-height: 1.5;
-        font-size: 1rem;
-        text-align: justify;
-        color: #212529;
-        margin-bottom: 1em;
+        color: var(--text-secondary);
+        line-height: 1.7;
+        font-size: 0.95rem;
+        text-align: left;
+        margin-bottom: 1.2em;
+        font-weight: 400;
+      }
+      
+      .left-section a {
+        color: var(--accent-primary);
+        text-decoration: none;
+        transition: color 0.2s ease;
+      }
+      
+      .left-section a:hover {
+        color: var(--accent-primary-hover);
+        text-decoration: underline;
       }
       
       .right-section {
-        flex: 3;
-        background: #3A3B40;
-        padding: 60px 40px;
+        flex: 2;
+        background: var(--bg-primary);
+        padding: 48px 40px;
         display: flex;
         align-items: center;
         justify-content: center;
       }
       
       .container {
-        background: white;
-        padding: 50px;
-        border-radius: 20px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        max-width: 500px;
+        background: var(--bg-card);
+        padding: 40px 44px;
+        border-radius: 16px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        max-width: 480px;
         width: 100%;
       }
       
       h2 {
-        color: #FF6B35;
-        margin-bottom: 30px;
+        font-family: 'TWK Everett', sans-serif;
+        color: var(--accent-primary);
+        margin-bottom: 24px;
         text-align: center;
-        font-size: 32px;
-        font-weight: 700;
+        font-size: 26px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
       }
       
       .customer-name {
-        color: #1E3A5F;
+        color: var(--text-secondary);
         text-align: center;
-        margin-bottom: 30px;
-        font-size: 18px;
-        font-weight: 600;
+        margin-bottom: 28px;
+        font-size: 16px;
+        font-weight: 500;
       }
       
       form {
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 18px;
       }
       
       .form-group {
         position: relative;
-        margin-bottom: 8px;
+        margin-bottom: 4px;
       }
       
       label {
         position: absolute;
-        left: 16px;
-        top: 16px;
-        color: #6b7280;
-        font-size: 15px;
+        left: 14px;
+        top: 14px;
+        color: var(--text-muted);
+        font-size: 14px;
         font-weight: 400;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease;
         pointer-events: none;
         background: transparent;
         padding: 0 4px;
@@ -128,20 +228,22 @@
       input[type="text"],
       input[type="email"] {
         width: 100%;
-        padding: 16px;
-        border: 1px solid #D1D5DB;
+        padding: 14px 16px;
+        border: 1px solid var(--border-color);
         border-radius: 8px;
-        font-size: 15px;
-        transition: border-color 0.3s ease, box-shadow 0.3s ease;
-        background: #F9FAFB;
+        font-size: 14px;
+        font-family: 'Instrument Sans', sans-serif;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+        background: var(--bg-input);
+        color: var(--text-primary);
       }
       
       input[type="text"]:focus,
       input[type="email"]:focus {
         outline: none;
-        border-color: #FF6B35;
-        box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.1);
-        background: white;
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.15);
+        background: var(--bg-input);
       }
       
       input[type="text"]:focus + label,
@@ -152,61 +254,62 @@
       input[type="email"].has-value + label {
         top: -8px;
         left: 12px;
-        font-size: 12px;
-        color: #FF6B35;
+        font-size: 11px;
+        color: var(--accent-primary);
         font-weight: 600;
-        background: white;
+        background: var(--bg-card);
       }
       
       input[type="text"]:read-only {
-        background-color: #F3F4F6;
+        background-color: var(--bg-secondary);
         cursor: not-allowed;
+        opacity: 0.7;
       }
       
       input[type="text"]:read-only + label {
-        color: #6b7280;
+        color: var(--text-muted);
       }
       
       .file-upload-area {
-        border: 2px dashed #D1D5DB;
-        border-radius: 8px;
-        padding: 30px;
+        border: 2px dashed var(--border-color);
+        border-radius: 10px;
+        padding: 28px;
         text-align: center;
         cursor: pointer;
-        transition: all 0.3s ease;
-        background: #F9FAFB;
+        transition: all 0.2s ease;
+        background: var(--bg-input);
       }
       
       .file-upload-area:hover,
       .file-upload-area.drag-over {
-        border-color: #FF6B35;
-        background: #fff;
+        border-color: var(--accent-primary);
+        background: rgba(0, 212, 170, 0.05);
       }
       
       .file-upload-icon {
-        width: 48px;
-        height: 48px;
+        width: 44px;
+        height: 44px;
         margin-bottom: 12px;
-        fill: #1E3A5F;
+        filter: brightness(0) saturate(100%) invert(77%) sepia(34%) saturate(1106%) hue-rotate(116deg) brightness(98%) contrast(101%);
       }
       
       .file-upload-text {
-        color: #1E3A5F;
-        font-size: 14px;
-        font-weight: 600;
+        color: var(--text-secondary);
+        font-size: 13px;
+        font-weight: 500;
         margin-bottom: 4px;
       }
       
       .file-upload-subtext {
-        color: #6b7280;
+        color: var(--text-muted);
         font-size: 12px;
       }
       
       .file-name {
-        color: #FF6B35;
+        color: var(--accent-secondary);
         font-weight: 600;
         margin-top: 10px;
-        font-size: 13px;
+        font-size: 12px;
       }
       
       input[type="file"] {
@@ -214,20 +317,22 @@
       }
       
       button {
-        background: #FF6B35;
-        color: white;
-        padding: 16px 24px;
+        font-family: 'TWK Everett', sans-serif;
+        background: var(--accent-primary);
+        color: var(--bg-primary);
+        padding: 14px 24px;
         border: none;
         border-radius: 8px;
-        font-size: 16px;
-        font-weight: 700;
+        font-size: 15px;
+        font-weight: 600;
         cursor: pointer;
         transition: background 0.2s ease, transform 0.1s ease;
         text-transform: none;
+        letter-spacing: 0.01em;
       }
       
       button:hover {
-        background: #FF5520;
+        background: var(--accent-primary-hover);
         transform: translateY(-1px);
       }
       
@@ -236,31 +341,31 @@
       }
       
       button:disabled {
-        opacity: 0.6;
+        opacity: 0.5;
         cursor: not-allowed;
         transform: none;
       }
       
       .message {
-        margin-top: 20px;
-        padding: 12px;
-        border-radius: 5px;
+        margin-top: 18px;
+        padding: 12px 14px;
+        border-radius: 8px;
         text-align: center;
-        font-size: 14px;
+        font-size: 13px;
         display: none;
       }
       
       .message.success {
-        background-color: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
+        background-color: var(--success-bg);
+        color: var(--success-text);
+        border: 1px solid var(--success-border);
         display: block;
       }
       
       .message.error {
-        background-color: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
+        background-color: var(--error-bg);
+        color: var(--error-text);
+        border: 1px solid var(--error-border);
         display: block;
       }
       
@@ -271,10 +376,11 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
+        background-color: rgba(0, 0, 0, 0.75);
         z-index: 1000;
         align-items: center;
         justify-content: center;
+        backdrop-filter: blur(4px);
       }
       
       .modal.active {
@@ -282,18 +388,20 @@
       }
       
       .modal-content {
-        background: white;
-        padding: 30px;
-        border-radius: 10px;
-        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-        min-width: 400px;
-        max-width: 500px;
+        background: var(--bg-card);
+        padding: 28px 32px;
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+        min-width: 380px;
+        max-width: 460px;
       }
       
       .modal-title {
-        color: #333;
-        font-size: 20px;
-        font-weight: 600;
+        font-family: 'TWK Everett', sans-serif;
+        color: var(--text-primary);
+        font-size: 18px;
+        font-weight: 500;
         margin-bottom: 20px;
         text-align: center;
       }
@@ -304,58 +412,101 @@
       
       .progress-bar {
         width: 100%;
-        height: 30px;
-        background-color: #e0e0e0;
-        border-radius: 15px;
+        height: 28px;
+        background-color: var(--bg-input);
+        border-radius: 14px;
         overflow: hidden;
         position: relative;
+        border: 1px solid var(--border-color);
       }
       
       .progress-fill {
         height: 100%;
-        background: #FF6B35;
+        background: linear-gradient(90deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
         transition: width 0.3s ease;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        color: var(--bg-primary);
         font-weight: 600;
-        font-size: 14px;
+        font-size: 12px;
+        border-radius: 14px;
       }
       
       .progress-text {
-        margin-top: 10px;
+        margin-top: 12px;
         text-align: center;
-        color: #666;
-        font-size: 14px;
+        color: var(--text-secondary);
+        font-size: 13px;
       }
       
       .cancel-btn {
-        background: #dc3545;
-        color: white;
+        background: transparent;
+        color: var(--error-text);
         padding: 10px 20px;
-        border: none;
-        border-radius: 5px;
-        font-size: 14px;
+        border: 1px solid var(--error-border);
+        border-radius: 6px;
+        font-size: 13px;
         font-weight: 600;
         cursor: pointer;
         width: 100%;
-        margin-top: 20px;
-        transition: background 0.2s ease;
+        margin-top: 18px;
+        transition: all 0.2s ease;
+        font-family: 'Instrument Sans', sans-serif;
       }
       
       .cancel-btn:hover {
-        background: #c82333;
+        background: var(--error-bg);
         transform: none;
         box-shadow: none;
+      }
+
+      /* Scrollbar Styling */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--bg-secondary);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text-muted);
+      }
+
+      /* Responsive adjustments */
+      @media (max-width: 900px) {
+        .main-wrapper {
+          flex-direction: column;
+        }
+        
+        .left-section,
+        .right-section {
+          flex: none;
+          padding: 32px 24px;
+        }
+        
+        .left-section {
+          border-right: none;
+          border-bottom: 1px solid var(--border-color);
+        }
+        
+        .container {
+          padding: 28px;
+        }
       }
     </style>
   </head>
   <body>    
     <div class="main-wrapper">
       <div class="left-section">
-        <img src="fs-logo.webp" alt="Finite State Logo" class="logo-img">
-        <h2>Finite State Binary & SBOM Analysis</h2>
+        <img src="fs-logo.png" alt="Finite State Logo" class="logo-img">
+        <h2>Binary & SBOM Analysis</h2>
         <p>Finite State allows you to get immediate, actionable insight into the security of your connected devices. With a simple binary upload of your device firmware, or an upload of an existing SBOM, our system automatically generates a Software Bill of Materials (SBOM) and a Device Risk Report tailored to your environment.</p>
         <p>The SBOM shows you what's really inside your device firmware - the open source components, libraries, and versions that may introduce risk. Unlike generic SBOM tools, our analysis is performed directly on the binary itself, ensuring deep visibility into even the most opaque embedded systems. To make this information useful in your daily operations, the deliverable also includes a CSV report which correlates each software component to the actual device types in your inventory. This means that you don't just see a list of packages - you see how those packages affect the devices you rely on most.</p>
         <p>To get started, simply enter some details and click Upload. We'll take care of the rest</p>
