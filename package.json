@@ -2,11 +2,21 @@
   "name": "file-upload-proxy",
   "version": "1.0.0",
   "type": "module",
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+  },
   "dependencies": {
     "axios": "^1.6.0",
     "dotenv": "^16.4.0",
     "express": "^4.19.0",
     "form-data": "^4.0.5",
     "multer": "^2.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "transform": {}
   }
 }
