@@ -72,18 +72,18 @@
 
       /* CSS Variables for Theme Colors */
       :root {
-        --bg-primary: #0a0e14;
+        --bg-primary: #111214;
         --bg-secondary: #111820;
         --bg-card: #151c25;
         --bg-input: #1a222d;
         --border-color: #2a3544;
-        --border-focus: #00d4aa;
+        --border-focus: #38E5CE;
         --accent-primary: #00d4aa;
         --accent-primary-hover: #00e6b8;
-        --accent-secondary: #f5a623;
-        --accent-secondary-hover: #ffb534;
-        --text-primary: #ffffff;
-        --text-secondary: #a0aec0;
+        --accent-secondary: #f27229;
+        --accent-secondary-hover: #f27229;
+        --text-primary: #DCDCDC;
+        --text-secondary: #A8A8A8;
         --text-muted: #6b7a8f;
         --error-bg: rgba(239, 68, 68, 0.15);
         --error-border: #ef4444;
@@ -290,7 +290,6 @@
         width: 44px;
         height: 44px;
         margin-bottom: 12px;
-        filter: brightness(0) saturate(100%) invert(77%) sepia(34%) saturate(1106%) hue-rotate(116deg) brightness(98%) contrast(101%);
       }
       
       .file-upload-text {
@@ -725,12 +724,15 @@
           : fileName;
         fileNameEl.textContent = displayName;
         
-        // Extract and populate version field (always overwrite)
+        // Extract and populate version field only if empty (preserve user-entered values)
         const versionInput = document.getElementById('version');
-        const extractedVersion = extractVersionFromFilename(fileName);
-        // Always set the value - overwrite existing if version is found, clear if not
-        versionInput.value = extractedVersion;
-        updateFloatingLabel(versionInput);
+        if (!versionInput.value.trim()) {
+          const extractedVersion = extractVersionFromFilename(fileName);
+          if (extractedVersion) {
+            versionInput.value = extractedVersion;
+            updateFloatingLabel(versionInput);
+          }
+        }
       }
       
       if (dropArea) {
