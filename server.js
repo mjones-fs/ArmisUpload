@@ -1,11 +1,10 @@
 import express from "express";
 import multer from "multer";
 import axios from "axios";
-import FormData from "form-data";
-import fs from "fs";
 import dotenv from "dotenv";
 import path from "path";
 import https from "https";
+import { put, del } from "@vercel/blob";
 
 dotenv.config();
 
@@ -226,15 +225,8 @@ function getSbomType(filename) {
   return 'cdx';
 }
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, "uploads/");
-  },
-  filename: function (req, file, cb) {
-    // Security: Use timestamp-based filename to prevent conflicts and path issues
-    cb(null, file.fieldname + "-" + Date.now());
-  },
-});
+// Use memory storage instead of disk storage - files will be stored in Vercel Blob
+const storage = multer.memoryStorage();
 
 const upload = multer({ 
   storage: storage,
@@ -626,7 +618,7 @@ async function createVersionForDevice(apiKey, baseUrl, projectId, version) {
 }
 
 app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res) => {
-  let filePath = null;
+  let blobUrl = null;
   
   try {
     // Security: Validate file was uploaded
@@ -634,14 +626,14 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       return res.status(400).json({ error: "No file uploaded" });
     }
     
-    filePath = req.file.path;
+    // Get file buffer from memory storage
+    const fileBuffer = req.file.buffer;
     
     // Security: Validate and sanitize name
     const rawName = req.body.name;
     const name = sanitizeName(rawName);
     
     if (!name) {
-      fs.unlinkSync(filePath);
       return res.status(400).json({ 
         error: "Invalid Name. Name must be between 1 and 255 characters." 
       });
@@ -650,7 +642,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     // Security: Validate email
     const rawEmail = req.body.email;
     if (!validateEmail(rawEmail)) {
-      fs.unlinkSync(filePath);
       return res.status(400).json({ 
         error: "Invalid Email Address. Please provide a valid email address." 
       });
@@ -662,7 +653,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     const deviceId = sanitizeDeviceId(rawDeviceId);
     
     if (!deviceId) {
-      fs.unlinkSync(filePath);
       return res.status(400).json({ 
         error: "Invalid DeviceID. DeviceID must be alphanumeric and may contain dots, hyphens, or underscores. Maximum length is 255 characters." 
       });
@@ -671,7 +661,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     // Security: Validate and sanitize version (required)
     const rawVersion = req.body.version;
     if (!rawVersion || !rawVersion.trim()) {
-      fs.unlinkSync(filePath);
       return res.status(400).json({ 
         error: "Version is required. Please provide a version value." 
       });
@@ -679,7 +668,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     const version = sanitizeDeviceId(rawVersion.trim());
     
     if (!version) {
-      fs.unlinkSync(filePath);
       return res.status(400).json({ 
         error: "Invalid Version. Version must be alphanumeric and may contain dots, hyphens, or underscores. Maximum length is 255 characters." 
       });
@@ -698,34 +686,40 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
     
     // Security: Validate API key exists
     if (!apiKey) {
-      fs.unlinkSync(filePath);
       return res.status(500).json({ error: "Server configuration error" });
     }
 
     console.log(`Processing upload for device: ${deviceId}, version: ${version}${customer ? ` (customer: ${customer})` : ''}`);
 
-    // Step 1: Get or create project named after the Device ID
+    // Step 1: Upload file to Vercel Blob storage
+    const blobPathname = `uploads/${deviceId}/${version}/${Date.now()}-${filename}`;
+    console.log(`Uploading file to Vercel Blob storage: ${blobPathname}`);
+    
+    const blob = await put(blobPathname, fileBuffer, {
+      access: 'public',
+      contentType: req.file.mimetype || 'application/octet-stream',
+    });
+    
+    blobUrl = blob.url;
+    console.log(`File uploaded to Vercel Blob: ${blobUrl}`);
+
+    // Step 2: Get or create project named after the Device ID
     const projectId = await getOrCreateArmisProject(apiKey, baseUrl, deviceId, customer, name, email);
 
-    // Step 2: Create version named with the specified version value
+    // Step 3: Create version named with the specified version value
     const projectVersionId = await createVersionForDevice(apiKey, baseUrl, projectId, version);
 
-    // Step 3: Determine if file is SBOM or binary and upload to appropriate endpoint
+    // Step 4: Determine if file is SBOM or binary and upload to appropriate endpoint
     const isFileSbom = isSbomFile(filename);
     
     if (DEBUG_MODE) {
-      try {
-        const st = fs.statSync(filePath);
-        const endpoint = isFileSbom ? `${baseUrl}/public/v0/scans/sbom` : `${baseUrl}/public/v0/scans`;
-        console.log(`DEBUG upload target: ${endpoint}`);
-        console.log(`DEBUG file: ${filename}, size=${st.size} bytes, isSBOM=${isFileSbom}, proxy=${USE_PROXY}`);
-      } catch {}
+      const endpoint = isFileSbom ? `${baseUrl}/public/v0/scans/sbom` : `${baseUrl}/public/v0/scans`;
+      console.log(`DEBUG upload target: ${endpoint}`);
+      console.log(`DEBUG file: ${filename}, size=${fileBuffer.length} bytes, isSBOM=${isFileSbom}, proxy=${USE_PROXY}`);
+      console.log(`DEBUG blob URL: ${blobUrl}`);
     }
 
     console.log(`Uploading ${isFileSbom ? 'SBOM' : 'binary'} file to scan endpoint...`);
-    
-    // Read file as buffer for octet-stream upload
-    const fileBuffer = fs.readFileSync(filePath);
 
     let scanResponse;
     
@@ -785,9 +779,6 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       );
     }
 
-    // Clean up uploaded file
-    fs.unlinkSync(filePath);
-
     console.log("Scan triggered successfully");
     
     // SBOM endpoint returns 204 with no data, binary endpoint returns 200 with data
@@ -795,6 +786,7 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       success: true, 
       projectId: projectId,
       projectVersionId: projectVersionId,
+      blobUrl: blobUrl,
       message: `${isFileSbom ? 'SBOM' : 'Binary'} file uploaded and scan triggered successfully`
     };
     
@@ -822,14 +814,13 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
       console.error("Validation errors:", JSON.stringify(error.response.data.errors, null, 2));
     }
     
-    // Clean up file on error
-    if (filePath) {
+    // Clean up blob on error (optional - comment out if you want to keep failed uploads for debugging)
+    if (blobUrl) {
       try {
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
-        }
-      } catch (unlinkError) {
-        console.error("Error cleaning up file:", unlinkError);
+        await del(blobUrl);
+        console.log("Cleaned up blob after error:", blobUrl);
+      } catch (delError) {
+        console.error("Error cleaning up blob:", delError);
       }
     }
     
@@ -869,23 +860,10 @@ app.post("/upload", rateLimitMiddleware, upload.single("file"), async (req, res)
   }
 });
 
-// Security: Check if uploads directory exists and has proper permissions
-if (!fs.existsSync('uploads')) {
-  console.error('ERROR: uploads directory does not exist.');
-  console.error('Please create the uploads directory by running: mkdir uploads');
-  process.exit(1);
-}
-
-// Security: Verify uploads directory is actually a directory
-try {
-  const stats = fs.statSync('uploads');
-  if (!stats.isDirectory()) {
-    console.error('ERROR: uploads exists but is not a directory.');
-    process.exit(1);
-  }
-} catch (error) {
-  console.error('ERROR: Cannot access uploads directory:', error.message);
-  process.exit(1);
+// Validate Vercel Blob token is configured
+if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  console.warn('WARNING: BLOB_READ_WRITE_TOKEN is not set. Vercel Blob storage will not work.');
+  console.warn('Please set BLOB_READ_WRITE_TOKEN in your environment variables or .env file.');
 }
 
 const server = app.listen(3000, () => console.log("Server running at http://localhost:3000"));
