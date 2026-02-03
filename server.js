@@ -866,9 +866,16 @@ if (!process.env.BLOB_READ_WRITE_TOKEN) {
   console.warn('Please set BLOB_READ_WRITE_TOKEN in your environment variables or .env file.');
 }
 
-const server = app.listen(3000, () => console.log("Server running at http://localhost:3000"));
+// For local development, start the server
+// For Vercel, export the Express app
+if (process.env.VERCEL !== '1') {
+  const server = app.listen(3000, () => console.log("Server running at http://localhost:3000"));
+  
+  // Set server timeout to 30 minutes for large file uploads
+  server.timeout = 1800000;
+  server.keepAliveTimeout = 1800000;
+  server.headersTimeout = 1810000; // Slightly higher than keepAliveTimeout
+}
 
-// Set server timeout to 30 minutes for large file uploads
-server.timeout = 1800000;
-server.keepAliveTimeout = 1800000;
-server.headersTimeout = 1810000; // Slightly higher than keepAliveTimeout
+// Export the Express app for Vercel serverless functions
+export default app;
