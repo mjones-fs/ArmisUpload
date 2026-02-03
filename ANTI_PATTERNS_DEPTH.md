@@ -166,8 +166,8 @@ Hardcoded secrets represent one of the most pervasive and dangerous vulnerabilit
 ```pseudocode
 // VULNERABLE: API key hardcoded directly in source
 class PaymentService:
-    API_KEY = "sk_live_4eC39HqLyjWDarjtT1zdp7dc"
-    API_SECRET = "whsec_5f8d7e3a2b1c4f9e8a7d6c5b4e3f2a1d"
+    API_KEY = "aaaaaaaaaaaaaaaa"
+    API_SECRET = "bbbbbbbbbbbbbbbbbb"
 
     function processPayment(amount, currency, cardToken):
         headers = {
